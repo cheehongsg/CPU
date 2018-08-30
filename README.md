@@ -1,2 +1,2 @@
-# CPU-internal
-ChIA-PET Utilities (Internal)
+# CPU
+ChIA-PET Utilities
