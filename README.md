@@ -1,7 +1,7 @@
 # CPU
 ChIA-PET Utilities
 
-CPU was conceived and developed in 2014 as Dr Wei lab developed ChIA-PET Nextera dual-linker. This differs from ChIA-PET MmeI as the tags are now variable length and tagmentation is used rather than MmeI. The lengthy execution time of the original ChIA-PET Tools along with my preference of comprehesive analysis motivated the CPU development. Meanwhile, Dr Ruan lab developed the ChIA-PET bridge linker where a single-linker instead of dual linkers. I call this the ChIA-PET Nextera single-linker.
+CPU was conceived and developed in 2014 as Dr Wei lab developed ChIA-PET Nextera dual-linker. This differs from ChIA-PET MmeI as the tags are now variable length and tagmentation is used rather than MmeI. The lengthy execution time of the original ChIA-PET Tools along with my preference of comprehesive analysis motivated the CPU development. Meanwhile, Dr Ruan lab developed the ChIA-PET bridge linker where a single-linker instead of dual linkers. I call this the ChIA-PET Nextera single-linker. CPU supports both new ChIA-PET methodologies.
 
 CPU uses [SSW Library](https://github.com/ekg/ssw), an SIMD Smith-Waterman C/C++ Library for Use in Genomic Applications, to perform linkers and adapters detection.
 
