@@ -5,7 +5,7 @@ CPU was conceived and developed in 2014 as Dr Wei lab developed ChIA-PET Nextera
 
 CPU uses [SSW Library](https://github.com/ekg/ssw), an SIMD Smith-Waterman C/C++ Library for Use in Genomic Applications, to perform linkers and adapters detection.
 
-CPU uses [BWA](https://github.com/lh3/bwa) aln and mem to perform tag to genome mapping accordingly to the tag length.
+CPU uses [BWA](https://github.com/lh3/bwa) (v0.7.12) aln and mem to perform tag to genome mapping accordingly to the tag length.
 
 CPU performs de-duplication to remove PCR duplicate by considering the paired tags' 5' genomic position, and the identified linkers along with the 3' genomic position. In essence, when there is evidence that the paired tags are not from the same molecule (product of PCR), CPU will not consider the paired tags as possibly PCR duplicated.
 
