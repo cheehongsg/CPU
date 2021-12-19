@@ -122,6 +122,9 @@ typedef struct {
 	int linkerFlag;
 	int nTagFamily;
 	int classType;
+
+	int rawData;
+	unsigned long numReads;
 } stat_opt_t;
 
 // TODO: handle larger capacity?
@@ -210,6 +213,9 @@ stat_opt_t *stat_opt_init()
 	o->nTagFamily = CPU_TAGTYPE_DILINKER;
 	o->classType = -1;
 	
+	o->rawData = 0;
+	o->numReads = 0;
+
 	return o;
 }
 
@@ -464,17 +470,20 @@ int main_stat(int argc, char *argv[])
 	gzFile fpci = 0;
 	void *ci = 0;
 	int64_t n_processed = 0;
+	char *pNumReads = 0;
 	
 	double t_diff;
 
 	opt = stat_opt_init();
-	while ((c = getopt(argc, argv, "sdpt:T:c:")) >= 0) {
+	while ((c = getopt(argc, argv, "sdprt:T:c:n:")) >= 0) {
 		if (c == 't') opt->n_threads = atoi(optarg), opt->n_threads = opt->n_threads > 1? opt->n_threads : 1;
 		else if (c == 'T') opt->minTagLen = atoi(optarg), opt->minTagLen = opt->minTagLen >= 0 ? opt->minTagLen : 20;
 		else if (c == 'c') opt->classType = atoi(optarg), opt->classType = -1==opt->classType ? opt->n_threads : (opt->classType>CPU_OUTPUT_SL_COUNT ? -1 : opt->classType);
+		else if (c == 'n') opt->numReads = strtoul(optarg, &pNumReads, 10);
 		else if (c == 'p') opt->flag |= MEM_F_PE;
 		else if (c == 'd') opt->linkerFlag = 2;
 		else if (c == 's') opt->linkerFlag = 1;
+		else if (c == 'r') opt->rawData = 1;
 		else {
 			stat_opt_terminate(opt);
 			free(opt);
@@ -482,6 +491,7 @@ int main_stat(int argc, char *argv[])
 		}
 	}
 	if (opt->n_threads < 1) opt->n_threads = 1;
+	if (opt->rawData) opt->n_threads = 1;
 	if (optind >= argc) {
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Usage: cpu stat [options] <in.cpu> <in.fq>\n\n");
@@ -497,6 +507,8 @@ int main_stat(int argc, char *argv[])
 		fprintf(stderr, "                  None (0), Tied (1), Conflict (2)\n");
 		fprintf(stderr, "                  SL: 2 tags (3), 1 tag (4)\n");
 		fprintf(stderr, "                  DL: HL (3), FLC 2 tags (4), FLC 1 tag (5), FLNC 2 tags (5), FLNC 1 tag (7)\n");
+		fprintf(stderr, "       -r         raw data\n");
+		fprintf(stderr, "       -n INT     min. number of reads to process, 0=all [%d]\n", opt->numReads);
 		fprintf(stderr, "\n");
 		fprintf(stderr, "       -v INT     verbose level: 1=error, 2=warning, 3=message, 4+=debugging [%d]\n", bwa_verbose);
 		fprintf(stderr, "\nNote: Please read the man page for detailed description of the command line and options.\n");
@@ -591,56 +603,104 @@ int main_stat(int argc, char *argv[])
 	// TODO: let's determine the maximum read length and initialize accordingly
 	int maxReadLength = MAX_READ_LEN;
 	{
-		//gzseek can be extremely slow; so we are going to open the file twice!
-		//z_off_t startOfRecords = gztell(fpci);
-		
-		if (bwa_verbose >= 3)
-			fprintf(stderr, "[M::%s] Determine max read length..\n", __func__);
-		
-		while ((cpus = stat_readcpu(&n, opt->chunk_size * opt->n_threads, fpci)) != 0) {
+		if (opt->rawData) {
+			if (!(opt->flag&MEM_F_PE)) fprintf(stdout, "R1A_ref_begin1\tR1A_ref_end1\tR1A_read_begin1\tR1A_read_end1\tR1A_score1\tR1A_type\tR1L_ref_begin1\tR1L_ref_end1\tR1L_read_begin1\tR1L_read_end1\tR1L_score1\tR1L_type\tR1L_tied_type\tfinalLinkerType\tclassification\tR1L1\tR1L2\n");
+			else fprintf(stdout, "R1A_ref_begin1\tR1A_ref_end1\tR1A_read_begin1\tR1A_read_end1\tR1A_score1\tR1A_type\tR2A_ref_begin1\tR2A_ref_end1\tR2A_read_begin1\tR2A_read_end1\tR2A_score1\tR2A_type\tR1L_ref_begin1\tR1L_ref_end1\tR1L_read_begin1\tR1L_read_end1\tR1L_score1\tR1L_type\tR1L_tied_type\tR2L_ref_begin1\tR2L_ref_end1\tR2L_read_begin1\tR2L_read_end1\tR2L_score1\tR2L_type\tR2L_tied_type\tfinalLinkerType\tclassification\tR1L1\tR1L2\tR2L1\tR2L2\n");
+
+			while ((cpus = stat_readcpu(&n, opt->chunk_size * opt->n_threads, fpci)) != 0) {
+				if (bwa_verbose >= 3)
+					fprintf(stderr, "[M::%s] read %d records..\n", __func__, n);
+
+				// TODO: report each of the columns!
+				if (!(opt->flag&MEM_F_PE)) {
+					for(i=0; i<n; ++i) {
+						cpu_record_t *pCPU1 = &(cpus[i]);
+						/* adapter */
+						fprintf(stdout, "%d\t%d\t%d\t%d\t%d", pCPU1->adapter_ref_begin1, pCPU1->adapter_ref_end1, pCPU1->adapter_read_begin1, pCPU1->adapter_read_end1, pCPU1->adapter_score1);
+						fprintf(stdout, "\t%s", adapterTypeToStr(pCPU1->adapter_type));
+						/* END - adapter */
+						
+						/* linker */
+						fprintf(stdout, "\t%d\t%d\t%d\t%d\t%d", pCPU1->linker_ref_begin1, pCPU1->linker_ref_end1, pCPU1->linker_read_begin1, pCPU1->linker_read_end1, pCPU1->linker_score1);
+						fprintf(stdout, "\t%s\t%s", linkerTypeToStr(pCPU1->linker_type), linkerTypeToStr(pCPU1->tied_linker_type));
+						/* END - linker */
+						
+						fprintf(stdout, "\t%s\t%s", linkerClassToStr(pCPU1->finalLinkerType), outputSLClassToStr(pCPU1->classification));
+						fprintf(stdout, "\t%d\t%d", pCPU1->len[0], pCPU1->len[1]);
+						fprintf(stdout, "\n");
+
+					}
+				} else {
+					// interlaced... cpus[i<<1|0] & cpus[i<<1|1]
+					for (i = 0; i < n; i+=2) {
+						cpu_record_t *pCPU1 = &(cpus[i]);
+						cpu_record_t *pCPU2 = &(cpus[i+1]);
+
+						/* adapter */
+						fprintf(stdout, "%d\t%d\t%d\t%d\t%d", pCPU1->adapter_ref_begin1, pCPU1->adapter_ref_end1, pCPU1->adapter_read_begin1, pCPU1->adapter_read_end1, pCPU1->adapter_score1);
+						fprintf(stdout, "\t%s", adapterTypeToStr(pCPU1->adapter_type));
+						
+						fprintf(stdout, "\t%d\t%d\t%d\t%d\t%d", pCPU2->adapter_ref_begin1, pCPU2->adapter_ref_end1, pCPU2->adapter_read_begin1, pCPU2->adapter_read_end1, pCPU2->adapter_score1);
+						fprintf(stdout, "\t%s", adapterTypeToStr(pCPU2->adapter_type));
+						/* END - adapter */
+						
+						/* linker */
+						fprintf(stdout, "\t%d\t%d\t%d\t%d\t%d", pCPU1->linker_ref_begin1, pCPU1->linker_ref_end1, pCPU1->linker_read_begin1, pCPU1->linker_read_end1, pCPU1->linker_score1);
+						fprintf(stdout, "\t%s\t%s", linkerTypeToStr(pCPU1->linker_type), linkerTypeToStr(pCPU1->tied_linker_type));
+						fprintf(stdout, "\t%d\t%d\t%d\t%d\t%d", pCPU2->linker_ref_begin1, pCPU2->linker_ref_end1, pCPU2->linker_read_begin1, pCPU2->linker_read_end1, pCPU2->linker_score1);
+						fprintf(stdout, "\t%s\t%s", linkerTypeToStr(pCPU2->linker_type), linkerTypeToStr(pCPU2->tied_linker_type));
+						/* END - linker */
+						
+						fprintf(stdout, "\t%s\t%s", linkerClassToStr(pCPU1->finalLinkerType), outputSLClassToStr(pCPU1->classification));
+						fprintf(stdout, "\t%d\t%d\t%d\t%d", pCPU1->len[0], pCPU1->len[1], pCPU2->len[0], pCPU2->len[1]);
+						fprintf(stdout, "\n");
+					}
+				}
+				
+				free(cpus);
+				
+				n_processed += n;
+				if (bwa_verbose >= 3) {
+					t_diff = realtime() - G_t_real;
+					fprintf(stderr, "[M::%s] %lld sequences processed, %.0f seq/sec, %.2f min..\n", __func__, n_processed, 1.0*n_processed/t_diff, t_diff/60.0);
+				}
+				if (opt->numReads && n_processed>=opt->numReads) {
+					break;
+				}
+			}
+			n_processed = 0;
+
+		} else {
 			if (bwa_verbose >= 3)
-				fprintf(stderr, "[M::%s] read %d records..\n", __func__, n);
+				fprintf(stderr, "[M::%s] Determine max read length..\n", __func__);
 			
-			// might need to pass statistics holder
-			int *maxReadLengths = calloc(opt->n_threads, sizeof(int));
-			stat_process_maxReadLen(opt, cpus, maxReadLengths, n_processed, n, stat_worker_maxReadLength, &maxReadLength);
-			
-			// TODO: accummulate the statistics metrics?
-			
-			free(cpus);
-			free(maxReadLengths);
-			
-			n_processed += n;
-			if (bwa_verbose >= 3) {
-				t_diff = realtime() - G_t_real;
-				fprintf(stderr, "[M::%s] %lld sequences processed, %.0f seq/sec, %.2f min..\n", __func__, n_processed, 1.0*n_processed/t_diff, t_diff/60.0);
+			while ((cpus = stat_readcpu(&n, opt->chunk_size * opt->n_threads, fpci)) != 0) {
+				if (bwa_verbose >= 3)
+					fprintf(stderr, "[M::%s] read %d records..\n", __func__, n);
+				
+				// might need to pass statistics holder
+				int *maxReadLengths = calloc(opt->n_threads, sizeof(int));
+				stat_process_maxReadLen(opt, cpus, maxReadLengths, n_processed, n, stat_worker_maxReadLength, &maxReadLength);
+				
+				// TODO: accummulate the statistics metrics?
+				
+				free(cpus);
+				free(maxReadLengths);
+				
+				n_processed += n;
+				if (bwa_verbose >= 3) {
+					t_diff = realtime() - G_t_real;
+					fprintf(stderr, "[M::%s] %lld sequences processed, %.0f seq/sec, %.2f min..\n", __func__, n_processed, 1.0*n_processed/t_diff, t_diff/60.0);
+				}
+				if (opt->numReads && n_processed>=opt->numReads) {
+					break;
+				}
 			}
-		}
-		n_processed = 0;
-		
-		if (bwa_verbose >= 3)
-			fprintf(stderr, "[M::%s] Max read length = %d.\n", __func__, maxReadLength);
-		
-		/*
-		if (bwa_verbose >= 3)
-			fprintf(stderr, "[M::%s] Rewinding to start of stream..\n", __func__);
-		if (-1==gzseek(fpci, startOfRecords, SEEK_SET)) {
-			// ERROR: cannot seek to be start of records
-			if (bwa_verbose >= 1) fprintf(stderr, "[E::%s] Fail to rewind to start of records\n", __func__);
-			stat_opt_terminate(opt);
-			free(opt);
+			n_processed = 0;
 			
-			free(swVersion.s); free(swModule.s);
-			
-			int ret = gzclose(fpci);
-			if (Z_OK != ret)
-			{
-				if (bwa_verbose >= 1) fprintf(stderr, "[E::%s] fail to close fpci `%s'.\n", __func__, Z_ERRNO == ret ? strerror(errno) : zError(ret));
-			} else {
-				kclose(ci);
-			}
+			if (bwa_verbose >= 3)
+				fprintf(stderr, "[M::%s] Max read length = %d.\n", __func__, maxReadLength);
 		}
-		*/
 		
 		int ret = gzclose(fpci);
 		if (Z_OK != ret)
@@ -649,6 +709,8 @@ int main_stat(int argc, char *argv[])
 		} else {
 			kclose(ci);
 		}
+
+		if (opt->rawData) return 0;
 		
 		// let's re-open the file
 		ci = kopen(argv[optind], &fdci);
@@ -758,6 +820,10 @@ int main_stat(int argc, char *argv[])
 			t_diff = realtime() - G_t_real;
 			fprintf(stderr, "[M::%s] %lld sequences processed, %.0f seq/sec, %.2f min..\n", __func__, n_processed, 1.0*n_processed/t_diff, t_diff/60.0);
 		}
+
+		if (opt->numReads && n_processed>=opt->numReads) {
+			break;
+		}
 	}
 	
 	// OUTPUT: final statistics summary
@@ -775,9 +841,11 @@ int main_stat(int argc, char *argv[])
 	//fprintf(stdout, "Read length\t%d\n", stat_class.readLen);
 	fprintf(stdout, "Read length\t%d\n", maxReadLength);
 	if (-1==opt->classType) {
-		fprintf(stdout, "Statistics filter\tn.a.\n");
+		if (0==opt->numReads) fprintf(stdout, "Statistics filter\tn.a.\n");
+		else  fprintf(stdout, "Statistics filter\tnumReads=%lu\n", opt->numReads);
 	} else {
-		fprintf(stdout, "Statistics filter\t%d, %s\n", opt->classType, ((1==opt->linkerFlag) ? outputSLClassToUserStr(opt->classType) : outputClassToUserStr(opt->classType)));
+		if (0==opt->numReads) fprintf(stdout, "Statistics filter\t%d, %s\n", opt->classType, ((1==opt->linkerFlag) ? outputSLClassToUserStr(opt->classType) : outputClassToUserStr(opt->classType)));
+		else fprintf(stdout, "Statistics filter\t%d, %s and numReads=%lu\n", opt->classType, ((1==opt->linkerFlag) ? outputSLClassToUserStr(opt->classType) : outputClassToUserStr(opt->classType)), opt->numReads);
 	}
 	fprintf(stdout, ">>END\n");
 	

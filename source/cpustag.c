@@ -882,11 +882,11 @@ int main_stag(int argc, char *argv[])
 				// <read1>,<read2>
 				// <quality1>,<quality2>
 				
-				/* adapter */
 				cpu_record_t *pCPU1 = &(cpus[i]);
 				cpu_record_t *pCPU2 = &(cpus[i+1]);
 				
 				if (opt->cpuflag & CPU_LABEL) {
+					/* adapter */
 					gzprintf(outfd, "%d\t%d\t%d\t%d\t%d", pCPU1->adapter_ref_begin1, pCPU1->adapter_ref_end1, pCPU1->adapter_read_begin1, pCPU1->adapter_read_end1, pCPU1->adapter_score1);
 					gzprintf(outfd, "\t%s", adapterTypeToStr(pCPU1->adapter_type));
 					
